@@ -2,6 +2,7 @@ using AspNetCoreVerifiableCredentials;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using System;
@@ -36,6 +37,12 @@ builder.Services.AddRazorPages();
 builder.Services.AddHttpClient();  // use iHttpFactory as best practice, should be easy to use extra retry
 
 var app = builder.Build();
+
+//+ Added for Entra Verified ID so that callback uses proxy's hostname
+app.UseForwardedHeaders( new ForwardedHeadersOptions {
+    ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost
+} );
+//- 
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

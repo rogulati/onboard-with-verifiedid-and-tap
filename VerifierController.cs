@@ -18,6 +18,7 @@ using Microsoft.Identity.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Graph;
 using Azure.Identity;
+using Microsoft.Identity.Client.Cache;
 
 namespace AspNetCoreVerifiableCredentials
 {
@@ -112,6 +113,7 @@ namespace AspNetCoreVerifiableCredentials
 
                 jsonString = JsonConvert.SerializeObject(payload);
 
+                _log.LogTrace( jsonString );
 
                 //CALL REST API WITH PAYLOAD
                 HttpStatusCode statusCode = HttpStatusCode.OK;
@@ -181,7 +183,7 @@ namespace AspNetCoreVerifiableCredentials
         /// This method is called by the VC Request API when the user scans a QR code and presents a Verifiable Credential to the service
         /// </summary>
         /// <returns></returns>
-        [HttpPost]
+        [HttpPost( "/api/verifier/presentationCallback" )]
         public async Task<ActionResult> PresentationCallback()
         {
             try
@@ -260,7 +262,7 @@ namespace AspNetCoreVerifiableCredentials
                                 payload = $"userUPN={userUPN}, objectId={userObjectId}, tap={tapValue}"
                                 //userFoundPayloadDeleteMe = JsonConvert.SerializeObject(userFound)
                             };
-
+                            _log.LogTrace( $"{cacheData.message}.objectId={userObjectId}, UPN={userUPN}" );
                             _cache.Set(state, JsonConvert.SerializeObject(cacheData));
                         } 
                         else
@@ -270,7 +272,7 @@ namespace AspNetCoreVerifiableCredentials
                                 status = "presentation_not_verified",
                                 message = $"There is an existing TAP already issued for FirstName({firstName}), LastName({lastName}) .",
                             };
-
+                            _log.LogTrace( cacheData.message );
                             _cache.Set(state, JsonConvert.SerializeObject(cacheData));
                         }
                     } 
@@ -281,7 +283,7 @@ namespace AspNetCoreVerifiableCredentials
                             status = "presentation_not_verified",
                             message = $"User not found, FirstName({firstName}), LastName({lastName}) .",
                         };
-
+                        _log.LogTrace( cacheData.message );
                         _cache.Set(state, JsonConvert.SerializeObject(cacheData));
                     }
 
@@ -291,6 +293,7 @@ namespace AspNetCoreVerifiableCredentials
             }
             catch (Exception ex)
             {
+                _log.LogTrace( ex.Message );
                 return BadRequest(new { error = "400", error_description = ex.Message });
             }
         }
@@ -370,7 +373,7 @@ namespace AspNetCoreVerifiableCredentials
                             status = "account_setup_done",
                             message = $"Authenticator App Phone Sign In configured in Device: {authenticatorAppResult[0].DisplayName} - Platform: {authenticatorAppResult[0].DeviceTag}"
                         };
-
+                        _log.LogTrace( cacheData.message );
                         return new ContentResult { ContentType = "application/json", Content = JsonConvert.SerializeObject(cacheData) };
                     }
                     else
@@ -380,6 +383,7 @@ namespace AspNetCoreVerifiableCredentials
                             status = "account_setup_in_progress",
                             message = "Waiting for account set up"
                         };
+                        _log.LogTrace( cacheData.message );
                         return new ContentResult { ContentType = "application/json", Content = JsonConvert.SerializeObject(cacheData) };
                     }
                 }
@@ -387,6 +391,7 @@ namespace AspNetCoreVerifiableCredentials
             }
             catch (Exception ex)
             {
+                _log.LogTrace( ex.Message );
                 return BadRequest(new { error = "400", error_description = ex.Message });
             }
         }

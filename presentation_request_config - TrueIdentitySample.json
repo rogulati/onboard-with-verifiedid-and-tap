@@ -28,7 +28,7 @@
   "configuration": {
     "validation": {
       "allowRevoked": true,
-      "skipLinkedDomainCheck": true
+      "validateLinkedDomain": true
     }
   }
 }

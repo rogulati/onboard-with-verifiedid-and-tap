@@ -57,7 +57,7 @@
                 var gotoApps = document.getElementById('gotoapps');
                 
                 var display = document.getElementById('display');
-                var qrcode = new QRCode("qrcode", { width: 300, height: 300 });
+                var qrcode = new QRCode("qrcode", { width: 150, height: 150 });
                 var respPresentationReq = null;
 
                 var checkVCPresentationInterval = null;
@@ -75,7 +75,8 @@
                 }
 
                 getVC.addEventListener('click', () => {
-                        window.location = '@Configuration.GetSection("AppSettings")["IdvUrlWithReturnUrl"]';
+                        //window.location = '@Html.Raw(Configuration.GetSection("AppSettings")["IdvUrlWithReturnUrl"])';
+                        window.location = '@ViewData["idvLink"]';
                                                 
                         signIn.addEventListener('click', () => 
                         {
@@ -95,7 +96,20 @@
                             '_blank'
                         );
                 });
-               
+
+                function renderQRCode(url) {
+                    document.getElementById('qrcode').style.display = "block";
+                    document.getElementById("qrcode").getElementsByTagName("img")[0].style.opacity = "1.0";
+                    qrcode.makeCode(url);
+                }
+                function dimQRCode() {
+                    document.getElementById("qrcode").getElementsByTagName("img")[0].style.opacity = "0.1";
+                }
+                function hideQRCode() {
+                    document.getElementById("qrcode").style.display = "none";
+                    document.getElementById("qrcode").getElementsByTagName("img")[0].style.display = "none";
+                }
+
                 function startVerification()
                 {
                     fetch('/api/verifier/presentation-request')
@@ -106,16 +120,13 @@
                         .then(function(message) 
                         {
                             respPresentationReq = JSON.parse(message);
-                            if( /Android/i.test(navigator.userAgent) ) {
-                                console.log(`Android device! Using deep link (${respPresentationReq.url}).`);
-                                window.location.href = respPresentationReq.url; setTimeout(function () {
-                                window.location.href = "https://play.google.com/store/apps/details?id=com.azure.authenticator"; }, 2000);
-                            } else if (/iPhone/i.test(navigator.userAgent)) {
-                                console.log(`iOS device! Using deep link (${respPresentationReq.url}).`);
+
+                            if (/Android/i.test(navigator.userAgent) || /iPhone/i.test(navigator.userAgent)) {
+                                console.log(`Mobile device (${navigator.userAgent})! Using deep link (${respPresentationReq.url}).`);
                                 window.location.replace(respPresentationReq.url);
                             } else {
                                 console.log(`Not Android or IOS. Generating QR code encoded with ${message}`);
-                                qrcode.makeCode(respPresentationReq.url);
+                                renderQRCode(respPresentationReq.url);
                                 document.getElementById('sign-in').style.visibility = "hidden";
                                 document.getElementById('qrText').style.display = "block";
                             }
@@ -141,11 +152,13 @@
                                 {
                                     document.getElementById('message-wrapper').style.display = "block";
                                     document.getElementById('qrText').style.display = "none";
-                                    document.getElementById('qrcode').style.display = "none";
+                                    //document.getElementById('qrcode').style.display = "none";
+                                    dimQRCode();
                                     document.getElementById('message').innerHTML = respMsg.message;
                                 }
                                     
                                 if (respMsg.status == 'presentation_verified') {
+                                    hideQRCode();
                                     document.getElementById('message').innerHTML = respMsg.message;
                                     document.getElementById('accountInfo-wrapper').style.display = "block";
                                     document.getElementById('userUpn').innerHTML = respMsg.userUPN;

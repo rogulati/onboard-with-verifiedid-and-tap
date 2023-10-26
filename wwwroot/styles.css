@@ -16,9 +16,9 @@ body {
     text-decoration: none;
     border-radius: 8px;
     display: inline-block;
-    font-size: 16px;
+    font-size: calc(1rem + 1vw);
     font-weight: bold;
-  }
+}
 
 .dark-purple-fill {
   background-color: #3B2E58;
@@ -37,11 +37,11 @@ body {
 }
 
 .small-text {
-  font-size: 16px;
+    font-size: calc(1rem + 1vw);
 }
 
 .tiny-text {
-  font-size: 12px;
+    font-size: calc(1rem + 1vw);
 }
 
 .text-gray {
@@ -86,11 +86,11 @@ body {
 }
 
 #message {
-  font-size: 1.5em;
+    font-size: calc(1rem + 1vw);
 }
 
 #subject {
-    font-size: 1.5em;
+    font-size: calc(1rem + 1vw);
 }
 
 .monospacedText {
@@ -102,7 +102,7 @@ body {
     text-decoration: none;
     border-radius: 8px;
     display: inline-block;
-    font-size: 24px;
+    font-size: calc(2rem + 1vw);
     font-family: 'consolas'
 }
 
@@ -115,7 +115,7 @@ body {
     text-decoration: none;
     border-radius: 8px;
     display: inline-block;
-    font-size: 24px;
+    font-size: calc(1rem + 1vw);
     font-weight: bold;
     margin-bottom: 50px;
 }
@@ -129,17 +129,18 @@ body {
     text-decoration: none;
     border-radius: 8px;
     display: inline-block;
-    font-size: 24px;
+    font-size: calc(1rem + 1vw);
     font-weight: bold;
     margin-bottom: 50px;
 }
 
 .skipButton {
-    font-size: 16px;
+    font-size: calc(1rem + 1vw);
     text-decoration: underline;
     color: blue;
 }
 
 .accountInfo {
-    font-size: 1.5em;
+    font-size: calc(1rem + 1vw);
 }
+
