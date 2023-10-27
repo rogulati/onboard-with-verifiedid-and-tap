@@ -229,33 +229,18 @@ namespace AspNetCoreVerifiableCredentials
                 //TODO: code below will fail if the user doesnt have TAP as an allowed Auth Method.Need to handle that case.
                 //NOTE: Right now above is listed as a setup requirement in the README file. 
 
+                // delete any old TAPs so we can create a new one
                 var existingTap = mgClient.Users[userObjectId].Authentication.TemporaryAccessPassMethods.Request().GetAsync();
-                TemporaryAccessPassAuthenticationMethod tap = null;
-                if (existingTap != null && existingTap.Result != null ) {
-                    if ( existingTap.Result.Count == 0) {
-                        //Step 2: Issue the TAP
-                        tap = new TemporaryAccessPassAuthenticationMethod();
-                        var tapResult = await mgClient.Users[userObjectId].Authentication.TemporaryAccessPassMethods
-                            .Request()
-                            .AddAsync( tap );
-                        tap = tapResult;
-                        //var tapValue = tapResult.TemporaryAccessPass;
-                    }
-                    if ( existingTap.Result.Count >= 1) {
-                        // find a tap that doesn't expire within the next 5 minutes (we will just report there is one as we can't get the actual TAP code)
-                        DateTime nowUtc = DateTime.UtcNow.AddMinutes(-5);
-                        foreach( var eTap in existingTap.Result ) {
-                            DateTime expiresUtc =  (DateTime)eTap.StartDateTime?.UtcDateTime.AddMinutes((double)eTap.LifetimeInMinutes);
-                            if ( true == eTap?.IsUsable && expiresUtc > nowUtc ) { 
-                                tap = eTap;
-                                break;
-                            }
-                        }
-                        if (  tap == null ) {
-                            return BadRequest( new { error = "400", error_description = $"TAPs exists but expired. Please see admin" } );
-                        }
+                if (existingTap != null && existingTap.Result != null && existingTap.Result.Count > 1 ) {
+                    foreach( var eTap in existingTap.Result ) {
+                        await mgClient.Users[userObjectId].Authentication.TemporaryAccessPassMethods[eTap.Id].Request().DeleteAsync();
                     }
                 }
+                // now create a new TAP code
+                TemporaryAccessPassAuthenticationMethod tap = new TemporaryAccessPassAuthenticationMethod();
+                var tapResult = await mgClient.Users[userObjectId].Authentication.TemporaryAccessPassMethods.Request().AddAsync( tap );
+                tap = tapResult;
+
                 var cacheData = new {
                     status = (null != tap.TemporaryAccessPass ? "tap_created" : "tap_exists"),
                     message = $"Welcome aboard, {firstName}.",
