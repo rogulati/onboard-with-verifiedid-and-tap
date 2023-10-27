@@ -19,6 +19,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Graph;
 using Azure.Identity;
 using Microsoft.Identity.Client.Cache;
+using Microsoft.AspNetCore.SignalR.Protocol;
 
 namespace AspNetCoreVerifiableCredentials
 {
@@ -179,6 +180,101 @@ namespace AspNetCoreVerifiableCredentials
             }
         }
 
+        [HttpGet("/api/createtap/{id}")]
+        public async Task<ActionResult> CreateTap( string id) {
+            try {
+                //the id is the state value initially created when the issuanc request was requested from the request API
+                //the in-memory database uses this as key to get and store the state of the process so the UI can be updated
+                /**/
+                if (string.IsNullOrEmpty( id )) {
+                    _log.LogTrace( $"Missing argument 'id'" );
+                    return BadRequest( new { error = "400", error_description = "Missing argument 'id'" } );
+                }
+                if (!_cache.TryGetValue( id, out string buf )) {
+                    _log.LogTrace( $"Cached data not found for id: {id}" );
+                    return new NotFoundResult();
+                }
+                JObject cachedData = JObject.Parse( buf );
+                if (!cachedData.ContainsKey("status") || cachedData["status"].ToString() != "presentation_verified") {
+                    return BadRequest( new { error = "400", error_description = $"Wrong status in cached data" } );
+                }
+                if (!cachedData.ContainsKey( "firstName" ) || !cachedData.ContainsKey( "lastName" ) ) {
+                    return BadRequest( new { error = "400", error_description = $"firstName/lastName missing in cached data" } );
+                }
+
+                string firstName = cachedData["firstName"].ToString();
+                string lastName = cachedData["lastName"].ToString();
+                /**/
+                /*
+                string firstName = "Jade";
+                string lastName = "Dsouza";
+                */
+                var mgClient = GetGraphClient();
+                var userFound = await mgClient.Users
+                    .Request()
+                    .Filter( $"givenName eq '{firstName}' and surname eq '{lastName}'" )
+                    .GetAsync();
+
+                if (userFound == null || (null != userFound && userFound.Count == 0) ) {
+                    return BadRequest( new { error = "400", error_description = $"User not found" } );
+                }
+                if (userFound == null || (null != userFound && userFound.Count > 1)) {
+                    return BadRequest( new { error = "400", error_description = $"Multiple users found" } );
+                }
+                var userObjectId = userFound[0].Id;
+                var userUPN = userFound[0].UserPrincipalName;
+
+                //Cherry on top, get the user's photo, any other information 
+
+                //TODO: code below will fail if the user doesnt have TAP as an allowed Auth Method.Need to handle that case.
+                //NOTE: Right now above is listed as a setup requirement in the README file. 
+
+                var existingTap = mgClient.Users[userObjectId].Authentication.TemporaryAccessPassMethods.Request().GetAsync();
+                TemporaryAccessPassAuthenticationMethod tap = null;
+                if (existingTap != null && existingTap.Result != null ) {
+                    if ( existingTap.Result.Count == 0) {
+                        //Step 2: Issue the TAP
+                        tap = new TemporaryAccessPassAuthenticationMethod();
+                        var tapResult = await mgClient.Users[userObjectId].Authentication.TemporaryAccessPassMethods
+                            .Request()
+                            .AddAsync( tap );
+                        tap = tapResult;
+                        //var tapValue = tapResult.TemporaryAccessPass;
+                    }
+                    if ( existingTap.Result.Count >= 1) {
+                        // find a tap that doesn't expire within the next 5 minutes (we will just report there is one as we can't get the actual TAP code)
+                        DateTime nowUtc = DateTime.UtcNow.AddMinutes(-5);
+                        foreach( var eTap in existingTap.Result ) {
+                            DateTime expiresUtc =  (DateTime)eTap.StartDateTime?.UtcDateTime.AddMinutes((double)eTap.LifetimeInMinutes);
+                            if ( true == eTap?.IsUsable && expiresUtc > nowUtc ) { 
+                                tap = eTap;
+                                break;
+                            }
+                        }
+                        if (  tap == null ) {
+                            return BadRequest( new { error = "400", error_description = $"TAPs exists but expired. Please see admin" } );
+                        }
+                    }
+                }
+                var cacheData = new {
+                    status = (null != tap.TemporaryAccessPass ? "tap_created" : "tap_exists"),
+                    message = $"Welcome aboard, {firstName}.",
+                    userFirstName = firstName,
+                    userLastName = lastName,
+                    userUPN = userUPN,
+                    userObjectId = userObjectId,
+                    tap = tap.TemporaryAccessPass,
+                    expiresUtc = DateTime.UtcNow.AddMinutes( (double)tap.LifetimeInMinutes ),
+                    payload = $"userUPN={userUPN}, objectId={userObjectId}, tap={tap.TemporaryAccessPass}"
+                };
+                _log.LogTrace( $"{cacheData.message}.objectId={userObjectId}, UPN={userUPN}" );
+                _cache.Set( id, JsonConvert.SerializeObject( cacheData ) );
+                //return new OkResult();
+                return new ContentResult { ContentType = "application/json", Content = JsonConvert.SerializeObject( cacheData ) };
+            } catch (Exception ex) {
+                return BadRequest( new { error = "400", error_description = ex.Message } );
+            }
+        }
         /// <summary>
         /// This method is called by the VC Request API when the user scans a QR code and presents a Verifiable Credential to the service
         /// </summary>
@@ -214,79 +310,16 @@ namespace AspNetCoreVerifiableCredentials
                 // In this case the result is put in the in memory cache which is used by the UI when polling for the state so the UI can be updated.
                 if (presentationResponse["requestStatus"].ToString() == "presentation_verified")
                 {
-                    //Start of logic to issue a tap
-                    //Step 1 : Look up the user based on information in the VC in Azure AD. Here, you need to put your own lookup logi to find the user 
-                    //for sample purposes, we are going with a simple match in first name and last name
-                    //TODO: check other information from the VC and compare against HR system (e.g. street address)
-
                     string firstName = presentationResponse["verifiedCredentialsData"][0]["claims"]["firstName"].ToString();
                     string lastName = presentationResponse["verifiedCredentialsData"][0]["claims"]["lastName"].ToString();
-
-                    var mgClient = GetGraphClient();
-                    var userFound = await mgClient.Users
-                        .Request()
-                        .Filter($"givenName eq '{firstName}' and surname eq '{lastName}'")
-                        .GetAsync();
-
-                    if (userFound != null && userFound.Count != 0)
-                    {
-                        var userObjectId = userFound[0].Id;
-                        var userUPN = userFound[0].UserPrincipalName;
-
-                        //Cherry on top, get the user's photo, any other information 
-
-                        //TODO: code below will fail if the user doesnt have TAP as an allowed Auth Method.Need to handle that case.
-                        //NOTE: Right now above is listed as a setup requirement in the README file. 
-
-                        var existingTap =  mgClient.Users[userObjectId].Authentication.TemporaryAccessPassMethods.Request().GetAsync();
-
-                        if (existingTap != null && existingTap.Result != null && existingTap.Result.Count == 0)
-                        {
-                            //Step 2: Issue the TAP
-                            var temporaryAccessPassAuthenticationMethod = new TemporaryAccessPassAuthenticationMethod();
-                            var tapResult = await mgClient.Users[userObjectId].Authentication.TemporaryAccessPassMethods
-                                .Request()
-                                .AddAsync(temporaryAccessPassAuthenticationMethod);
-
-                            var tapValue = tapResult.TemporaryAccessPass;
-
-                            var cacheData = new
-                            {
-                                status = "presentation_verified",
-                                message = $"Welcome aboard, {firstName}.",
-                                userFirstName = firstName,
-                                userLastName = lastName,
-                                userUPN = userUPN,
-                                userObjectId = userObjectId,
-                                tap = tapValue,
-                                payload = $"userUPN={userUPN}, objectId={userObjectId}, tap={tapValue}"
-                                //userFoundPayloadDeleteMe = JsonConvert.SerializeObject(userFound)
-                            };
-                            _log.LogTrace( $"{cacheData.message}.objectId={userObjectId}, UPN={userUPN}" );
-                            _cache.Set(state, JsonConvert.SerializeObject(cacheData));
-                        } 
-                        else
-                        {
-                            var cacheData = new
-                            {
-                                status = "presentation_not_verified",
-                                message = $"There is an existing TAP already issued for FirstName({firstName}), LastName({lastName}) .",
-                            };
-                            _log.LogTrace( cacheData.message );
-                            _cache.Set(state, JsonConvert.SerializeObject(cacheData));
-                        }
-                    } 
-                    else
-                    {
-                        var cacheData = new
-                        {
-                            status = "presentation_not_verified",
-                            message = $"User not found, FirstName({firstName}), LastName({lastName}) .",
-                        };
-                        _log.LogTrace( cacheData.message );
-                        _cache.Set(state, JsonConvert.SerializeObject(cacheData));
-                    }
-
+                    var cacheData = new {
+                        status = "presentation_verified",
+                        message = $"Presentation verified of {firstName} {lastName} from IDV",
+                        firstName = firstName,
+                        lastName = lastName
+                    };
+                    _log.LogTrace( $"{cacheData.status}, firstName={firstName}, lastName={lastName}" );
+                    _cache.Set( state, JsonConvert.SerializeObject( cacheData ) );
                 }
 
                 return new OkResult();

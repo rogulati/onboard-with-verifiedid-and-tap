@@ -18,8 +18,9 @@
                <div id="accountInfo-wrapper" class="accountInfo" style="display:none">
                    Use the following information to onboard your work account in the Authenticator App<br />
                    <b>Account:</b><div id="userUpn" class="monospacedText">UPN</div> <br />
-                   <b>Temporary Access Pass:</b><div id="userTap" class="monospacedText">TAP</div> <br />              
-               </div>
+                   <b>Temporary Access Pass:</b><div id="userTap" class="monospacedText">TAP</div> <br />
+                   <b>Valid until (UTC):</b><div id="tapExpires" class="monospacedText">UTC</div> <br />
+                </div>
             </div>
 
             <div id="step1-wrapper" class="margin-bottom-75 margin-top-75">
@@ -136,6 +137,37 @@
                     
                 }
 
+                function createTap(requestId) {
+                    fetch('api/createtap/' + requestId)
+                        .then(response => response.text())
+                        .catch(error => document.getElementById("message").innerHTML = error)
+                        .then(response => {
+                            if (response.length > 0) {
+                                console.log(response);
+                                respMsg = JSON.parse(response);
+                                if (respMsg.status == 'tap_created') {
+                                    document.getElementById('message').innerHTML = respMsg.message;
+                                    document.getElementById('accountInfo-wrapper').style.display = "block";
+                                    document.getElementById('userUpn').innerHTML = respMsg.userUPN;
+                                    document.getElementById('userTap').innerHTML = respMsg.tap;
+                                    document.getElementById('tapExpires').innerHTML = respMsg.expiresUtc;
+                                    resetButtons('3');
+                                    //Turn on the timer to check user is done signing in
+                                    checkAuthenticatorAppStatusInterval = setInterval(
+                                        checkUserCredentialStatusWorker,
+                                        3000,
+                                        requestId);
+                                }
+                                if (respMsg.status == 'tap_exists') {
+                                    document.getElementById('message').innerHTML = "A previous Temp Access Code already exists";
+                                    document.getElementById('accountInfo-wrapper').style.display = "block";
+                                    document.getElementById('userUpn').innerHTML = respMsg.userUPN;
+                                    document.getElementById('userTap').innerHTML = "";
+                                    document.getElementById('tapExpires').innerHTML = respMsg.expiresUtc;
+                                }
+                            }
+                        })
+                }
                 function checkVCPresentationStatusWorker(requestId)
                 {
                     fetch('api/verifier/presentation-response?id=' + requestId)
@@ -159,24 +191,9 @@
                                     
                                 if (respMsg.status == 'presentation_verified') {
                                     hideQRCode();
-                                    document.getElementById('message').innerHTML = respMsg.message;
-                                    document.getElementById('accountInfo-wrapper').style.display = "block";
-                                    document.getElementById('userUpn').innerHTML = respMsg.userUPN;
-                                    document.getElementById('userTap').innerHTML = respMsg.tap;
-
-                                    resetButtons('3');
                                     clearInterval(checkVCPresentationInterval);
-
-                                    //Turn on the timer to check user is done signing in
-                                    checkAuthenticatorAppStatusInterval = setInterval(
-                                        checkUserCredentialStatusWorker, 
-                                        3000, 
-                                        requestId);
-                                }
-
-                                if (respMsg.status == 'presentation_not_verified') {
                                     document.getElementById('message').innerHTML = respMsg.message;
-                                    clearInterval(checkVCPresentationInterval);
+                                    createTap(requestId);
                                 }
                             }
                         })
